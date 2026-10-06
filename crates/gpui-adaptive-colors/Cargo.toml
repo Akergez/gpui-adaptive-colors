@@ -1,0 +1,19 @@
+[package]
+name = "gpui-adaptive-colors"
+description = "Material You colours as a gpui-kit theme that follows the system's colour"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+adaptive-colors = { path = "../adaptive-colors", features = ["system"] }
+# Pinned: the theme this crate fills in is that version's, key by key.
+gpui-kit = "=0.7.0"
+# The way a thread that waits on the system reaches the main one.
+futures = "0.3"
+# The theme is filled in under the names its files use, which are the stable
+# ones; some of its colours have no other way in.
+serde_json = "1"
+
+[dev-dependencies]
+gpui-kit = { version = "=0.7.0", features = ["test-support"] }

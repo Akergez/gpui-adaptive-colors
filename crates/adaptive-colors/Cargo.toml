@@ -1,0 +1,25 @@
+[package]
+name = "adaptive-colors"
+description = "Material You colour schemes from one colour, and the colour the system has chosen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+# Asking the system for its colour. Without it the crate is arithmetic only.
+system = ["dep:zbus", "dep:jni", "dep:ndk-context"]
+
+[dependencies]
+# 0.5 asks for a newer compiler than this workspace builds with.
+material-colors = "0.4.2"
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+zbus = { version = "5", optional = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22", optional = true }
+ndk-context = { version = "0.1", optional = true }
+
+[[example]]
+name = "system"
+required-features = ["system"]
