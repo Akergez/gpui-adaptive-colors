@@ -1,0 +1,19 @@
+[package]
+name = "gpui-zed-themes"
+description = "Themes written for the Zed editor, in a gpui-kit application: read, fetched from Zed's registry, kept on disk and browsed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Pinned: a Zed theme is translated into that version's theme format.
+gpui-kit = "=0.7.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+# The registry is two requests, made blocking: the crate knows no executor.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+# What an extension comes packaged as.
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+tar = { version = "0.4", default-features = false }

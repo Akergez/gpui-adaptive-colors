@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/adaptive-colors", "crates/gpui-adaptive-colors"]
+members = [
+    "crates/adaptive-colors",
+    "crates/gpui-adaptive-colors",
+    "crates/gpui-zed-themes",
+]
 
 [workspace.package]
 version = "0.1.0"

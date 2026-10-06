@@ -20,7 +20,7 @@ use std::thread;
 use adaptive_colors::{Color, Scheme, Seed, Variant, system};
 use futures::StreamExt as _;
 use futures::channel::mpsc::{self, UnboundedSender};
-use gpui_kit::component::Theme;
+use gpui_kit::component::{Theme, ThemeConfig, ThemeMode};
 use gpui_kit::{App, Global};
 
 use crate::mapping::theme_config;
@@ -102,6 +102,9 @@ pub struct AdaptiveColors {
     system: Option<Seed>,
     light: SchemeColors,
     dark: SchemeColors,
+    /// A theme to wear instead of the scheme's, for light and for dark; see
+    /// [`wear`].
+    worn: [Option<Rc<ThemeConfig>>; 2],
     /// The way answers reach the main thread, kept for [`refresh`].
     answers: UnboundedSender<Option<Seed>>,
 }
@@ -137,6 +140,11 @@ impl AdaptiveColors {
         if dark { &self.dark } else { &self.light }
     }
 
+    /// The theme worn in `mode` instead of the scheme's, if there is one.
+    pub fn worn(&self, mode: ThemeMode) -> Option<&Rc<ThemeConfig>> {
+        self.worn[usize::from(mode.is_dark())].as_ref()
+    }
+
     fn schemes(&self) -> [Scheme; 2] {
         [false, true].map(|dark| Scheme::new(&self.seed(), self.variant, self.contrast, dark))
     }
@@ -156,12 +164,13 @@ pub fn init(options: Options, cx: &mut App) {
         // there is something to ask for one.
         light: SchemeColors::from(&Scheme::light(&options.fallback.into())),
         dark: SchemeColors::from(&Scheme::dark(&options.fallback.into())),
+        worn: [None, None],
         answers: answers.clone(),
     };
     let schemes = colors.schemes();
     [colors.light, colors.dark] = schemes.each_ref().map(SchemeColors::from);
     cx.set_global(colors);
-    install(&schemes, cx);
+    install(cx);
 
     cx.spawn(async move |cx| {
         while let Some(seed) = incoming.next().await {
@@ -220,15 +229,45 @@ fn change(cx: &mut App, change: impl FnOnce(&mut AdaptiveColors)) {
     }
     let schemes = colors.schemes();
     [colors.light, colors.dark] = schemes.each_ref().map(SchemeColors::from);
-    install(&schemes, cx);
+    install(cx);
 }
 
-/// Puts a light and a dark scheme behind the theme's two modes and shows
-/// again whichever mode is up.
-fn install([light, dark]: &[Scheme; 2], cx: &mut App) {
+/// Wears `theme` instead of the scheme's, in the mode the theme is for: a
+/// theme somebody made by hand, where a person prefers it to a scheme. The
+/// other mode keeps what it has, and the scheme goes on following its seed
+/// underneath, ready for [`wear_scheme`].
+///
+/// [`ActiveScheme`](crate::ActiveScheme) still answers with the scheme's
+/// roles, which a theme from elsewhere has nothing to do with: while one may
+/// be worn, draw with `cx.theme()` alone.
+pub fn wear(theme: Rc<ThemeConfig>, cx: &mut App) {
+    let slot = usize::from(theme.mode.is_dark());
+    let worn = &AdaptiveColors::global(cx).worn[slot];
+    if worn.as_ref().is_some_and(|worn| Rc::ptr_eq(worn, &theme)) {
+        return;
+    }
+    cx.global_mut::<AdaptiveColors>().worn[slot] = Some(theme);
+    install(cx);
+}
+
+/// Goes back to the scheme's own theme in `mode`.
+pub fn wear_scheme(mode: ThemeMode, cx: &mut App) {
+    let slot = usize::from(mode.is_dark());
+    if AdaptiveColors::global(cx).worn[slot].is_some() {
+        cx.global_mut::<AdaptiveColors>().worn[slot] = None;
+        install(cx);
+    }
+}
+
+/// Puts a theme behind each of the toolkit's two modes — the one being worn
+/// there, or else the scheme's — and shows again whichever mode is up.
+fn install(cx: &mut App) {
+    let colors = AdaptiveColors::global(cx);
+    let [light, dark] = colors.schemes();
+    let [worn_light, worn_dark] = colors.worn.clone();
     let theme = Theme::global_mut(cx);
-    theme.light_theme = Rc::new(theme_config(light));
-    theme.dark_theme = Rc::new(theme_config(dark));
+    theme.light_theme = worn_light.unwrap_or_else(|| Rc::new(theme_config(&light)));
+    theme.dark_theme = worn_dark.unwrap_or_else(|| Rc::new(theme_config(&dark)));
     let mode = theme.mode;
     Theme::change(mode, None, cx);
 }
@@ -320,6 +359,35 @@ mod tests {
 
             set_source(Source::System, cx);
             assert_eq!(cx.theme().primary, primary_of(GREEN, dark));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn a_theme_from_elsewhere_is_worn_in_its_own_mode_only(cx: &mut TestAppContext) {
+        start(Options::new(GREEN).source(VIOLET), cx);
+        cx.update(|cx| {
+            let mut theirs = ThemeConfig {
+                name: "Theirs".into(),
+                mode: ThemeMode::Dark,
+                ..ThemeConfig::default()
+            };
+            theirs.colors.primary = Some("#102030".into());
+            let theirs_primary = gpui_kit::component::try_parse_color("#102030").unwrap();
+            wear(Rc::new(theirs), cx);
+
+            Theme::change(ThemeMode::Dark, None, cx);
+            assert_eq!(cx.theme().primary, theirs_primary);
+            assert_eq!(cx.theme().theme_name().as_ref(), "Theirs");
+            Theme::change(ThemeMode::Light, None, cx);
+            assert_eq!(cx.theme().primary, primary_of(VIOLET, false));
+
+            // A new seed leaves it on, and taking it off shows the new seed.
+            set_source(GREEN, cx);
+            Theme::change(ThemeMode::Dark, None, cx);
+            assert_eq!(cx.theme().primary, theirs_primary);
+            wear_scheme(ThemeMode::Dark, cx);
+            assert_eq!(cx.theme().primary, primary_of(GREEN, true));
+            assert!(AdaptiveColors::global(cx).worn(ThemeMode::Dark).is_none());
         });
     }
 

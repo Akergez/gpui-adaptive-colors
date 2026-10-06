@@ -25,4 +25,6 @@ mod state;
 
 pub use adaptive_colors::{Color, KeyColors, Palette, Scheme, Seed, Variant};
 pub use roles::{ActiveScheme, SchemeColors, hsla};
-pub use state::{AdaptiveColors, Options, Source, init, refresh, set_source};
+pub use state::{
+    AdaptiveColors, Options, Source, init, refresh, set_source, wear, wear_scheme,
+};
